@@ -38,19 +38,15 @@ namespace
 
     // Main GLFW window
     GLFWwindow* gWindow = nullptr;
-
     // Triangle mesh data
-    GLMesh gPyramidMesh;
-    GLMesh gLampMesh;
-    //GLMesh gLamp2Mesh;
-
+    GLMesh gMesh;
     // Texture
     GLuint gTextureId;
     glm::vec2 gUVScale(5.0f, 5.0f);
     GLint gTexWrapMode = GL_REPEAT;
 
     // Shader programs
-    GLuint gPyramidProgramId;
+    GLuint gCubeProgramId;
     GLuint gLampProgramId;
 
     // camera
@@ -64,26 +60,20 @@ namespace
     float gLastFrame = 0.0f;
 
     // Subject position and scale
-    glm::vec3 gPyramidPosition(0.0f, 0.0f, 0.0f);
-    glm::vec3 gPyramidScale(2.0f);
+    glm::vec3 gCubePosition(0.0f, 0.0f, 0.0f);
+    glm::vec3 gCubeScale(2.0f);
 
-    // Subject. and light color
+    // Cube and light color
     //m::vec3 gObjectColor(0.6f, 0.5f, 0.75f);
     glm::vec3 gObjectColor(1.f, 0.2f, 0.0f);
     glm::vec3 gLightColor(1.0f, 1.0f, 1.0f);
 
     // Light position and scale
-    glm::vec3 gLightPosition(0.6f, 0.8f, 3.0f); //Position of cube on top
-    glm::vec3 gLight2Position(0.6f, -0.1f, -2.0f);// Position of the bottom cube
+    glm::vec3 gLightPosition(1.5f, 0.5f, 3.0f);
     glm::vec3 gLightScale(0.3f);
 
-    //Light cube and light color
-   //m::vec3 gObjectColor(0.6f, 0.5f, 0.75f);
-    glm::vec3 gObject2Color(1.0f, 0.2f, 0.0f);
-    glm::vec3 gLight2Color(0.0f, 0.7f, 0.0f); // Green light cast on the pyramid
-
     // Lamp animation
-   // bool gIsLampOrbiting = true;
+    bool gIsLampOrbiting = true;
 }
 
 /* User-defined Function prototypes to:
@@ -97,9 +87,7 @@ void UProcessInput(GLFWwindow* window);
 void UMousePositionCallback(GLFWwindow* window, double xpos, double ypos);
 void UMouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 void UMouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-void UCreatePyramidMesh(GLMesh& mesh);
-void UCreateLampMesh(GLMesh& mesh);
-void UCreateLamp2Mesh(GLMesh& mesh);
+void UCreateMesh(GLMesh& mesh);
 void UDestroyMesh(GLMesh& mesh);
 bool UCreateTexture(const char* filename, GLuint& textureId);
 void UDestroyTexture(GLuint textureId);
@@ -108,133 +96,104 @@ bool UCreateShaderProgram(const char* vtxShaderSource, const char* fragShaderSou
 void UDestroyShaderProgram(GLuint programId);
 
 
-/* Pyramid Vertex Shader Source Code*/
-const GLchar* pyramidVertexShaderSource = GLSL(440,
+/* Cube Vertex Shader Source Code*/
+const GLchar* cubeVertexShaderSource = GLSL(440,
 
     layout(location = 0) in vec3 position; // VAP position 0 for vertex position data
-    layout(location = 1) in vec3 normal; // VAP position 1 for normals
-    layout(location = 2) in vec2 textureCoordinate;
+layout(location = 1) in vec3 normal; // VAP position 1 for normals
+layout(location = 2) in vec2 textureCoordinate;
 
-    out vec3 vertexNormal; // For outgoing normals to fragment shader
-    out vec3 vertexFragmentPos; // For outgoing color / pixels to fragment shader
-    out vec2 vertexTextureCoordinate;
+out vec3 vertexNormal; // For outgoing normals to fragment shader
+out vec3 vertexFragmentPos; // For outgoing color / pixels to fragment shader
+out vec2 vertexTextureCoordinate;
 
-    //Uniform / Global variables for the  transform matrices
-    uniform mat4 model;
-    uniform mat4 view;
-    uniform mat4 projection;
+//Uniform / Global variables for the  transform matrices
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
 
-    void main()
-    {
-        gl_Position = projection * view * model * vec4(position, 1.0f); // Transforms vertices into clip coordinates
+void main()
+{
+    gl_Position = projection * view * model * vec4(position, 1.0f); // Transforms vertices into clip coordinates
 
-        vertexFragmentPos = vec3(model * vec4(position, 1.0f)); // Gets fragment / pixel position in world space only (exclude view and projection)
+    vertexFragmentPos = vec3(model * vec4(position, 1.0f)); // Gets fragment / pixel position in world space only (exclude view and projection)
 
-        vertexNormal = mat3(transpose(inverse(model))) * normal; // get normal vectors in world space only and exclude normal translation properties
-        vertexTextureCoordinate = textureCoordinate;
+    vertexNormal = mat3(transpose(inverse(model))) * normal; // get normal vectors in world space only and exclude normal translation properties
+    vertexTextureCoordinate = textureCoordinate;
 }
 );
 
 
-/* Pyramid Fragment Shader Source Code*/
-const GLchar* pyramidFragmentShaderSource = GLSL(440,
+/* Cube Fragment Shader Source Code*/
+const GLchar* cubeFragmentShaderSource = GLSL(440,
 
     in vec3 vertexNormal; // For incoming normals
-    in vec3 vertexFragmentPos; // For incoming fragment position
-    in vec2 vertexTextureCoordinate;
+in vec3 vertexFragmentPos; // For incoming fragment position
+in vec2 vertexTextureCoordinate;
 
-    out vec4 fragmentColor; // For outgoing pyramid color to the GPU
+out vec4 fragmentColor; // For outgoing cube color to the GPU
 
-    // Uniform / Global variables for object color, light color, light position, and camera/view position
-    uniform vec3 objectColor;
-    uniform vec3 lightColor;
-    uniform vec3 lightPos;
-    uniform vec3 viewPosition;
-    uniform sampler2D uTexture; // Useful when working with multiple textures
-    uniform vec2 uvScale;
+// Uniform / Global variables for object color, light color, light position, and camera/view position
+uniform vec3 objectColor;
+uniform vec3 lightColor;
+uniform vec3 lightPos;
+uniform vec3 viewPosition;
+uniform sampler2D uTexture; // Useful when working with multiple textures
+uniform vec2 uvScale;
 
-    void main()
-    {
-        /*Phong lighting model calculations to generate ambient, diffuse, and specular components*/
+void main()
+{
+    /*Phong lighting model calculations to generate ambient, diffuse, and specular components*/
 
-        //Calculate Ambient lighting*/
-        float ambientStrength = 0.1f; // Set ambient or global lighting strength
-        vec3 ambient = ambientStrength * lightColor; // Generate ambient light color
+    //Calculate Ambient lighting*/
+    float ambientStrength = 0.1f; // Set ambient or global lighting strength
+    vec3 ambient = ambientStrength * lightColor; // Generate ambient light color
 
-        //Calculate Diffuse lighting*/
-        vec3 norm = normalize(vertexNormal); // Normalize vectors to 1 unit
-        vec3 lightDirection = normalize(lightPos - vertexFragmentPos); // Calculate distance (light direction) between light source and fragments/pixels on cube
-        float impact = max(dot(norm, lightDirection), 0.0);// Calculate diffuse impact by generating dot product of normal and light
-        vec3 diffuse = impact * lightColor; // Generate diffuse light color
+    //Calculate Diffuse lighting*/
+    vec3 norm = normalize(vertexNormal); // Normalize vectors to 1 unit
+    vec3 lightDirection = normalize(lightPos - vertexFragmentPos); // Calculate distance (light direction) between light source and fragments/pixels on cube
+    float impact = max(dot(norm, lightDirection), 0.0);// Calculate diffuse impact by generating dot product of normal and light
+    vec3 diffuse = impact * lightColor; // Generate diffuse light color
 
-        //Calculate Specular lighting*/
-        float specularIntensity = 0.8f; // Set specular light strength
-        float highlightSize = 16.0f; // Set specular highlight size
-        vec3 viewDir = normalize(viewPosition - vertexFragmentPos); // Calculate view direction
-        vec3 reflectDir = reflect(-lightDirection, norm);// Calculate reflection vector
-        //Calculate specular component
-        float specularComponent = pow(max(dot(viewDir, reflectDir), 0.0), highlightSize);
-        vec3 specular = specularIntensity * specularComponent * lightColor;
+    //Calculate Specular lighting*/
+    float specularIntensity = 0.8f; // Set specular light strength
+    float highlightSize = 16.0f; // Set specular highlight size
+    vec3 viewDir = normalize(viewPosition - vertexFragmentPos); // Calculate view direction
+    vec3 reflectDir = reflect(-lightDirection, norm);// Calculate reflection vector
+    //Calculate specular component
+    float specularComponent = pow(max(dot(viewDir, reflectDir), 0.0), highlightSize);
+    vec3 specular = specularIntensity * specularComponent * lightColor;
 
-        // Texture holds the color to be used for all three components
-        vec4 textureColor = texture(uTexture, vertexTextureCoordinate * uvScale);
+    // Texture holds the color to be used for all three components
+    vec4 textureColor = texture(uTexture, vertexTextureCoordinate * uvScale);
 
-        // Calculate phong result
-        vec3 phong = (ambient + diffuse + specular) * textureColor.xyz;
+    // Calculate phong result
+    vec3 phong = (ambient + diffuse + specular) * textureColor.xyz;
 
-        fragmentColor = vec4(phong, 1.0); // Send lighting results to GPU
+    fragmentColor = vec4(phong, 1.0); // Send lighting results to GPU
 }
 );
 
 
-/* Lamp Vertex Shader Source Code*/
+/* Lamp Shader Source Code*/
 const GLchar* lampVertexShaderSource = GLSL(440,
 
     layout(location = 0) in vec3 position; // VAP position 0 for vertex position data
 
         //Uniform / Global variables for the  transform matrices
-        uniform mat4 model;
-        uniform mat4 view;
-        uniform mat4 projection;
-
-        void main()
-        {
-            gl_Position = projection * view * model * vec4(position, 1.0f); // Transforms vertices into clip coordinates
-        }
-);
-
-
-/* Lamp Fragment Shader Source Code*/
-const GLchar* lampFragmentShaderSource = GLSL(440,
-
-    out vec4 fragmentColor; // For outgoing lamp color (smaller cube) to the GPU
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
 
 void main()
 {
-    fragmentColor = vec4(1.0f); // Set color to white (1.0f,1.0f,1.0f) with alpha 1.0
+    gl_Position = projection * view * model * vec4(position, 1.0f); // Transforms vertices into clip coordinates
 }
 );
 
 
-/* Lamp 2 Vertex Shader Source Code*/
-const GLchar* lamp2VertexShaderSource = GLSL(440,
-
-    layout(location = 0) in vec3 position; // VAP position 0 for vertex position data
-                                       
-    //Uniform / Global variables for the  transform matrices
-    uniform mat4 model;
-    uniform mat4 view;
-    uniform mat4 projection;
-
-    void main()
-    {
-        gl_Position = projection * view * model * vec4(position + 1.0f, 1.0f); // Transforms vertices into clip coordinates
-    }
-);
-
-
-/* Lamp 2 Fragment Shader Source Code*/
-const GLchar* lamp2FragmentShaderSource = GLSL(440,
+/* Fragment Shader Source Code*/
+const GLchar* lampFragmentShaderSource = GLSL(440,
 
     out vec4 fragmentColor; // For outgoing lamp color (smaller cube) to the GPU
 
@@ -270,25 +229,14 @@ int main(int argc, char* argv[])
     if (!UInitialize(argc, argv, &gWindow))
         return EXIT_FAILURE;
 
-    // Create the pyramid mesh
-    UCreatePyramidMesh(gPyramidMesh); // Calls the function to create the Vertex Buffer Object
-
-    // Create the lamp 1 mesh
-    UCreateLampMesh(gLampMesh); // Calls the function to create the Vertex Buffer Object
-
-    // Create the lamp 2 mesh
-   // UCreateLamp2Mesh(gLamp2Mesh); // Calls the function to create the Vertex Buffer Object
-
-
+    // Create the mesh
+    UCreateMesh(gMesh); // Calls the function to create the Vertex Buffer Object
 
     // Create the shader programs
-    if (!UCreateShaderProgram(pyramidVertexShaderSource, pyramidFragmentShaderSource, gPyramidProgramId))
+    if (!UCreateShaderProgram(cubeVertexShaderSource, cubeFragmentShaderSource, gCubeProgramId))
         return EXIT_FAILURE;
 
     if (!UCreateShaderProgram(lampVertexShaderSource, lampFragmentShaderSource, gLampProgramId))
-        return EXIT_FAILURE;
-
-    if (!UCreateShaderProgram(lamp2VertexShaderSource, lamp2FragmentShaderSource, gLampProgramId))
         return EXIT_FAILURE;
 
     // Load texture
@@ -299,11 +247,9 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
     // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
-    glUseProgram(gPyramidProgramId);
-    glUseProgram(gLampProgramId);
-
+    glUseProgram(gCubeProgramId);
     // We set the texture as texture unit 0
-    glUniform1i(glGetUniformLocation(gPyramidProgramId, "uTexture"), 0);
+    glUniform1i(glGetUniformLocation(gCubeProgramId, "uTexture"), 0);
 
     // Sets the background color of the window to black (it will be implicitely used by glClear)
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -329,15 +275,13 @@ int main(int argc, char* argv[])
     }
 
     // Release mesh data
-    UDestroyMesh(gPyramidMesh);
-    UDestroyMesh(gLampMesh);
-   // UDestroyMesh(gLamp2Mesh);
+    UDestroyMesh(gMesh);
 
     // Release texture
     UDestroyTexture(gTextureId);
 
     // Release shader programs
-    UDestroyShaderProgram(gPyramidProgramId);
+    UDestroyShaderProgram(gCubeProgramId);
     UDestroyShaderProgram(gLampProgramId);
 
     exit(EXIT_SUCCESS); // Terminates the program successfully
@@ -471,14 +415,13 @@ void UProcessInput(GLFWwindow* window)
         cout << "Current scale (" << gUVScale[0] << ", " << gUVScale[1] << ")" << endl;
     }
 
-    //Uncomment the following to get the light sources moving
-    /* Pauseand resume lamp orbiting
+    // Pause and resume lamp orbiting
     static bool isLKeyDown = false;
     if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS && !gIsLampOrbiting)
         gIsLampOrbiting = true;
     else if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS && gIsLampOrbiting)
         gIsLampOrbiting = false;
-*/
+
 }
 
 
@@ -560,7 +503,7 @@ void UMouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 // Functioned called to render a frame
 void URender()
 {
-    /* Lamp orbits around the origin
+    // Lamp orbits around the origin
     const float angularVelocity = glm::radians(45.0f);
     if (gIsLampOrbiting)
     {
@@ -568,7 +511,7 @@ void URender()
         gLightPosition.x = newPosition.x;
         gLightPosition.y = newPosition.y;
         gLightPosition.z = newPosition.z;
-    }*/
+    }
 
     // Enable z-depth
     glEnable(GL_DEPTH_TEST);
@@ -577,16 +520,16 @@ void URender()
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // PYRAMID: draw pyramid
-   //----------------
-   // Set the shader to be used
-    glUseProgram(gPyramidProgramId);
+    // Activate the cube VAO (used by cube and lamp)
+    glBindVertexArray(gMesh.vao);
 
-    // Activate the pyramid VAO 
-    glBindVertexArray(gPyramidMesh.vao);
+    // CUBE: draw cube
+    //----------------
+    // Set the shader to be used
+    glUseProgram(gCubeProgramId);
 
     // Model matrix: transformations are applied right-to-left order
-    glm::mat4 model = glm::translate(gPyramidPosition) * glm::scale(gPyramidScale);
+    glm::mat4 model = glm::translate(gCubePosition) * glm::scale(gCubeScale);
 
     // camera/view transformation
     glm::mat4 view = gCamera.GetViewMatrix();
@@ -595,19 +538,19 @@ void URender()
     glm::mat4 projection = glm::perspective(glm::radians(gCamera.Zoom), (GLfloat)WINDOW_WIDTH / (GLfloat)WINDOW_HEIGHT, 0.1f, 100.0f);
 
     // Retrieves and passes transform matrices to the Shader program
-    GLint modelLoc = glGetUniformLocation(gPyramidProgramId, "model");
-    GLint viewLoc = glGetUniformLocation(gPyramidProgramId, "view");
-    GLint projLoc = glGetUniformLocation(gPyramidProgramId, "projection");
+    GLint modelLoc = glGetUniformLocation(gCubeProgramId, "model");
+    GLint viewLoc = glGetUniformLocation(gCubeProgramId, "view");
+    GLint projLoc = glGetUniformLocation(gCubeProgramId, "projection");
 
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
     // Reference matrix uniforms from the Cube Shader program for the cub color, light color, light position, and camera position
-    GLint objectColorLoc = glGetUniformLocation(gPyramidProgramId, "objectColor");
-    GLint lightColorLoc = glGetUniformLocation(gPyramidProgramId, "lightColor");
-    GLint lightPositionLoc = glGetUniformLocation(gPyramidProgramId, "lightPos");
-    GLint viewPositionLoc = glGetUniformLocation(gPyramidProgramId, "viewPosition");
+    GLint objectColorLoc = glGetUniformLocation(gCubeProgramId, "objectColor");
+    GLint lightColorLoc = glGetUniformLocation(gCubeProgramId, "lightColor");
+    GLint lightPositionLoc = glGetUniformLocation(gCubeProgramId, "lightPos");
+    GLint viewPositionLoc = glGetUniformLocation(gCubeProgramId, "viewPosition");
 
     // Pass color, light, and camera data to the Cube Shader program's corresponding uniforms
     glUniform3f(objectColorLoc, gObjectColor.r, gObjectColor.g, gObjectColor.b);
@@ -616,7 +559,7 @@ void URender()
     const glm::vec3 cameraPosition = gCamera.Position;
     glUniform3f(viewPositionLoc, cameraPosition.x, cameraPosition.y, cameraPosition.z);
 
-    GLint UVScaleLoc = glGetUniformLocation(gPyramidProgramId, "uvScale");
+    GLint UVScaleLoc = glGetUniformLocation(gCubeProgramId, "uvScale");
     glUniform2fv(UVScaleLoc, 1, glm::value_ptr(gUVScale));
 
     // bind textures on corresponding texture units
@@ -624,12 +567,11 @@ void URender()
     glBindTexture(GL_TEXTURE_2D, gTextureId);
 
     // Draws the triangles
-    glDrawArrays(GL_TRIANGLES, 0, gPyramidMesh.nVertices);
+    glDrawArrays(GL_TRIANGLES, 0, gMesh.nVertices);
 
-    // LAMP 1: draw lamp
+    // LAMP: draw lamp
     //----------------
     glUseProgram(gLampProgramId);
-    glBindVertexArray(gLampMesh.vao);
 
     //Transform the smaller cube used as a visual que for the light source
     model = glm::translate(gLightPosition) * glm::scale(gLightScale);
@@ -644,28 +586,8 @@ void URender()
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
-    glDrawArrays(GL_TRIANGLES, 0, gLampMesh.nVertices);
+    glDrawArrays(GL_TRIANGLES, 0, gMesh.nVertices);
 
-    /* LAMP 2: draw lamp
-    //----------------
-    glUseProgram(gLampProgramId);
-    glBindVertexArray(gLamp2Mesh.vao);
-
-    //Transform the smaller cube used as a visual que for the light source
-    model = glm::translate(gLight2Position -1.0f) * glm::scale(gLightScale);
-
-    // Reference matrix uniforms from the Lamp Shader program
-    modelLoc = glGetUniformLocation(gLampProgramId, "model");
-    viewLoc = glGetUniformLocation(gLampProgramId, "view");
-    projLoc = glGetUniformLocation(gLampProgramId, "projection");
-
-    // Pass matrix data to the Lamp Shader program's matrix uniforms
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
-
-    glDrawArrays(GL_TRIANGLES, 0, gLamp2Mesh.nVertices);
-*/
     // Deactivate the Vertex Array Object and shader program
     glBindVertexArray(0);
     glUseProgram(0);
@@ -674,75 +596,9 @@ void URender()
     glfwSwapBuffers(gWindow);    // Flips the the back buffer with the front buffer every frame.
 }
 
-// Implements the UCreatePyramidMesh function
-void UCreatePyramidMesh(GLMesh& mesh)
-{
-    // Position and Color data
-    GLfloat verts[] = {
-    // Triangle 1, frontface triangle          //Negative Z Normal  Texture Coords.
-     0.0f,  0.5f, 0.0f,   0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
-     -0.5f, -0.5f, 0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
-     0.5f, -0.5f, 0.5f,   0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
 
-
-     // Triangle 2  frontface left triangle       //Positive Z Normal
-     0.0f, 0.5f,  0.0f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
-    0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,
-    0.5f,  -0.5f,  -0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
-
-
-    // Triangle 3, backface left triangle         //Negative X Normal
-      0.0f,  0.5f,  0.0f,   -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-      0.5f, -0.5f, -0.5f,  -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-      -0.5f, -0.5f, -0.5f,  -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-
-
-      //Triangle 4, backface right triangle         //Positive X Normal
-      0.0f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-      -0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-      -0.5f, -0.5f, 0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-
-      //Triangle 5, base triangle        //Negative Y Normal
-      -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
-      -0.5f, -0.5f, 0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
-       0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
-
-       //Triangle 6,base triangle          //Positive Y Normal
-      -0.5f, -0.5f, -0.5f,    0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
-       0.5f, -0.5f, 0.5f,     0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
-       0.5f,  -0.5f, -0.5f,   0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-    };
-
-    const GLuint floatsPerVertex = 3;
-    const GLuint floatsPerNormal = 3;
-    const GLuint floatsPerUV = 2;
-
-    mesh.nVertices = sizeof(verts) / (sizeof(verts[0]) * (floatsPerVertex + floatsPerNormal + floatsPerUV));
-
-    glGenVertexArrays(1, &mesh.vao); // we can also generate multiple VAOs or buffers at the same time
-    glBindVertexArray(mesh.vao);
-
-    // Create 2 buffers: first one for the vertex data; second one for the indices
-    glGenBuffers(1, &mesh.vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo); // Activates the buffer
-    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW); // Sends vertex or coordinate data to the GPU
-
-    // Strides between vertex coordinates is 6 (x, y, z, r, g, b, a). A tightly packed stride is 0.
-    GLint stride = sizeof(float) * (floatsPerVertex + floatsPerNormal + floatsPerUV);// The number of floats before each
-
-    // Create Vertex Attribute Pointers
-    glVertexAttribPointer(0, floatsPerVertex, GL_FLOAT, GL_FALSE, stride, 0);
-    glEnableVertexAttribArray(0);
-
-    glVertexAttribPointer(1, floatsPerNormal, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * floatsPerVertex));
-    glEnableVertexAttribArray(1);
-
-    glVertexAttribPointer(2, floatsPerUV, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * (floatsPerVertex + floatsPerNormal)));
-    glEnableVertexAttribArray(2);
-}
-
-// Implements the UCreateLampMesh function
-void UCreateLampMesh(GLMesh& mesh)
+// Implements the UCreateMesh function
+void UCreateMesh(GLMesh& mesh)
 {
     // Position and Color data
     GLfloat verts[] = {
@@ -824,92 +680,6 @@ void UCreateLampMesh(GLMesh& mesh)
     glVertexAttribPointer(2, floatsPerUV, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * (floatsPerVertex + floatsPerNormal)));
     glEnableVertexAttribArray(2);
 }
-
-
-// Implements the UCreateLampMesh function
-void UCreateLamp2Mesh(GLMesh& mesh)
-{
-    // Position and Color data
-    GLfloat verts[] = {
-        //Positions          //Normals
-        // ------------------------------------------------------
-        //Back Face          //Negative Z Normal  Texture Coords.
-       -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
-        0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
-        0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
-        0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
-       -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,
-       -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
-
-       //Front Face         //Positive Z Normal
-      -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
-       0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,
-       0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
-       0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
-      -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f,
-      -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
-
-      //Left Face          //Negative X Normal
-     -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-     -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-     -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-     -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-     -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-
-     //Right Face         //Positive X Normal
-     0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-     0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
-     0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-     0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
-     0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
-     0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
-
-     //Bottom Face        //Negative Y Normal
-    -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
-     0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
-     0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
-     0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
-    -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
-
-    //Top Face           //Positive Y Normal
-   -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
-    0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
-    0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-    0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
-   -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
-   -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f
-    };
-
-    const GLuint floatsPerVertex = 3;
-    const GLuint floatsPerNormal = 3;
-    const GLuint floatsPerUV = 2;
-
-    mesh.nVertices = sizeof(verts) / (sizeof(verts[0]) * (floatsPerVertex + floatsPerNormal + floatsPerUV));
-
-    glGenVertexArrays(1, &mesh.vao); // we can also generate multiple VAOs or buffers at the same time
-    glBindVertexArray(mesh.vao);
-
-    // Create 2 buffers: first one for the vertex data; second one for the indices
-    glGenBuffers(1, &mesh.vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo); // Activates the buffer
-    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW); // Sends vertex or coordinate data to the GPU
-
-    // Strides between vertex coordinates is 6 (x, y, z, r, g, b, a). A tightly packed stride is 0.
-    GLint stride = sizeof(float) * (floatsPerVertex + floatsPerNormal + floatsPerUV);// The number of floats before each
-
-    // Create Vertex Attribute Pointers
-    glVertexAttribPointer(0, floatsPerVertex, GL_FLOAT, GL_FALSE, stride, 0);
-    glEnableVertexAttribArray(0);
-
-    glVertexAttribPointer(1, floatsPerNormal, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * floatsPerVertex));
-    glEnableVertexAttribArray(1);
-
-    glVertexAttribPointer(2, floatsPerUV, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * (floatsPerVertex + floatsPerNormal)));
-    glEnableVertexAttribArray(2);
-}
-
 
 
 void UDestroyMesh(GLMesh& mesh)
