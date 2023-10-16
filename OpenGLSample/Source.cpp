@@ -22,7 +22,7 @@ using namespace std; // Standard namespace
 // Unnamed namespace
 namespace
 {
-    const char* const WINDOW_TITLE = "6-5 Milestone"; // Macro for window title
+    const char* const WINDOW_TITLE = "6-3 Assignment: Lighting a Pyramid"; // Macro for window title
 
     // Variables for window width and height
     const int WINDOW_WIDTH = 800;
@@ -65,17 +65,17 @@ namespace
     float gLastFrame = 0.0f;
     
     // Pyramid color, position, and scale
-    glm::vec3 gPyramidColor(0.0f, 1.0f, 0.0f);
+    glm::vec3 gPyramidColor(1.0f, 1.0f, 1.0f); //white
     glm::vec3 gPyramidPosition(0.0f, 0.0f, 0.0f);
     glm::vec3 gPyramidScale(2.0f);
 
     // Fill light color, position, and scale
-    glm::vec3 gFillLightColor(1.0f, 0.0f, 0.0f); //red
+    glm::vec3 gFillLightColor(0.0f, 0.1f, 0.0f); //a little green
     glm::vec3 gFillLightPosition(-0.5f, 1.0f, -1.5f);
     glm::vec3 gFillLightScale(0.1f);
 
     // Light position and scale
-    glm::vec3 gKeyLightColor(0.0f, 0.0f, 1.0f); //blue
+    glm::vec3 gKeyLightColor(0.0f, 0.3f, 0.0f); //greenish
     glm::vec3 gKeyLightPosition(0.5f, 0.0f, -1.5f);
     glm::vec3 gKeyLightScale(0.3);
 
@@ -180,8 +180,8 @@ void main()
     vec3 keyDiffuse = impact * keyLightColor; // Generate diffuse light color
 
     //Calculate Specular lighting*/
-    float specularIntensity = 0.4f; // Set specular light strength
-    float highlightSize = 16.0f; // Set specular highlight size
+    float specularIntensity = 0.5f; // Set specular light strength
+    float highlightSize = 6.0f; // Set specular highlight size
     vec3 viewDir = normalize(viewPosition - vertexFragmentPos); // Calculate view direction
     vec3 reflectDir = reflect(-lightDirection, norm);// Calculate reflection vector
 
