@@ -43,16 +43,21 @@ namespace
     GLMesh gPyramidMesh;
     GLMesh gFillLightMesh;
     GLMesh gKeyLightMesh;
+    GLMesh gDeskMesh;
+
 
     // Texture
     GLuint gTextureId;
-    glm::vec2 gUVScale(5.0f, 5.0f);
+    GLuint gDeskTextureId;
+
+    glm::vec2 gUVScale(1.0f, 1.0f);
 
     GLint gTexWrapMode = GL_REPEAT;
 
     // Shader programs
     GLuint gPyramidProgramId;
     GLuint gLampProgramId;
+    GLuint gDeskProgramId;
 
     // camera
     Camera gCamera(glm::vec3(0.0f, 0.0f, 7.0f));
@@ -66,7 +71,7 @@ namespace
     
     // Pyramid color, position, and scale
     glm::vec3 gPyramidColor(1.0f, 1.0f, 1.0f); //white
-    glm::vec3 gPyramidPosition(0.0f, 0.0f, 0.0f);
+    glm::vec3 gPyramidPosition(0.2f, 2.0f, 0.0f);
     glm::vec3 gPyramidScale(2.0f);
 
     // Fill light color, position, and scale
@@ -74,13 +79,18 @@ namespace
     glm::vec3 gFillLightPosition(-0.5f, 1.0f, -1.5f);
     glm::vec3 gFillLightScale(0.1f);
 
-    // Light position and scale
+    // Key Light position and scale
     glm::vec3 gKeyLightColor(0.0f, 0.3f, 0.0f); //greenish
     glm::vec3 gKeyLightPosition(0.5f, 0.0f, -1.5f);
     glm::vec3 gKeyLightScale(0.3);
 
+    // Desk position and scale
+    glm::vec3 gDeskColor(0.0f, 0.3f, 0.0f); //greenish
+    glm::vec3 gDeskPosition(0.0f, 0.0f, 0.0f);
+    glm::vec3 gDeskScale(2.0);
+
     // Lamp animation
-    bool gIsLampOrbiting = true;
+    bool gIsLampOrbiting = false;
 }
 
 /* User-defined Function prototypes to:
@@ -96,6 +106,7 @@ void UMouseScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
 void UMouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 void UCreatePyramidMesh(GLMesh& mesh);
 void UCreateLightMesh(GLMesh& mesh);
+void UCreateDeskMesh(GLMesh& mesh);
 void UDestroyMesh(GLMesh& mesh);
 bool UCreateTexture(const char* filename, GLuint& textureId);
 void UDestroyTexture(GLuint textureId);
@@ -197,11 +208,9 @@ void main()
     vec3 phong = (ambient + keyLight + diffuse + keyDiffuse + specular + objectColor) * textureColor.xyz;
 
     fragmentColor = vec4(phong, 1.0); // Send lighting results to GPU
-}
-);
+});
 
-
-/* Lamp Shader Source Code*/
+/* LAMP Vertex Shader Source Code*/
 const GLchar* lampVertexShaderSource = GLSL(440,
 
     layout(location = 0) in vec3 position; // VAP position 0 for vertex position data
@@ -214,11 +223,9 @@ uniform mat4 projection;
 void main()
 {
     gl_Position = projection * view * model * vec4(position, 1.0f); // Transforms vertices into clip coordinates
-}
-);
+});
 
-
-/* Lamp Fragment Shader Source Code*/
+/* LAMP Fragment Shader Source Code*/
 const GLchar* lampFragmentShaderSource = GLSL(440,
 
     out vec4 fragmentColor; // For outgoing lamp color (smaller cube) to the GPU
@@ -227,9 +234,49 @@ void main()
 {
     //Changes cube color, not the light 
     fragmentColor = vec4(1.0f); // Set color to white (1.0f,1.0f,1.0f) with alpha 1.0
-}
+});
+
+/* DESK Vertex Shader Source Code*/
+const GLchar* deskVertexShaderSource = GLSL(440,
+
+    layout(location = 0) in vec3 position; // VAP position 0 for vertex position data
+    layout(location = 1) in vec3 normal; // VAP position 1 for normals
+    layout(location = 2) in vec2 textureCoordinate;
+
+    out vec3 vertexNormal; // For outgoing normals to fragment shader
+    out vec3 vertexFragmentPos; // For outgoing color / pixels to fragment shader
+    out vec2 deskVertexTextureCoordinate;
+
+    //Uniform / Global variables for the  transform matrices
+    uniform mat4 model;
+    uniform mat4 view;
+    uniform mat4 projection;
+
+    void main()
+    {
+        gl_Position = projection * view * model * vec4(position, 1.0f); // Transforms vertices into clip coordinates
+
+        vertexFragmentPos = vec3(model * vec4(position, 1.0f)); // Gets fragment / pixel position in world space only (exclude view and projection)
+
+        vertexNormal = mat3(transpose(inverse(model))) * normal; // get normal vectors in world space only and exclude normal translation properties
+        deskVertexTextureCoordinate = textureCoordinate;
+    }
 );
 
+
+/* DESK Fragment Shader Source Code*/
+const GLchar* deskFragmentShaderSource = GLSL(440,
+    in vec2 deskVertexTextureCoordinate;
+
+    out vec4 fragmentColor;
+
+    uniform sampler2D uDeskTexture;
+    uniform vec2 uvScale;
+
+    void main()
+    {
+        fragmentColor = texture(uDeskTexture, deskVertexTextureCoordinate);
+    });
 
 // Images are loaded with Y axis going down, but OpenGL's Y axis goes up, so let's flip it
 void flipImageVertically(unsigned char* image, int width, int height, int channels)
@@ -260,12 +307,16 @@ int main(int argc, char* argv[])
     UCreatePyramidMesh(gPyramidMesh); // Calls the function to create the Vertex Buffer Object
     UCreateLightMesh(gKeyLightMesh); // Calls the function to create the Vertex Buffer Object
     UCreateLightMesh(gFillLightMesh); // Calls the function to create the Vertex Buffer Object
+    UCreateDeskMesh(gDeskMesh);
 
     // Create the shader programs
     if (!UCreateShaderProgram(pyramidVertexShaderSource, pyramidFragmentShaderSource, gPyramidProgramId))
         return EXIT_FAILURE;
 
     if (!UCreateShaderProgram(lampVertexShaderSource, lampFragmentShaderSource, gLampProgramId))
+        return EXIT_FAILURE;
+
+    if (!UCreateShaderProgram(deskVertexShaderSource, deskFragmentShaderSource, gDeskProgramId))
         return EXIT_FAILURE;
 
     // Load texture
@@ -275,11 +326,23 @@ int main(int argc, char* argv[])
         cout << "Failed to load texture " << texFilename << endl;
         return EXIT_FAILURE;
     }
+    // Load texture
+    const char* deskTexFilename = "../resources/textures/desk.jpg";
+    if (!UCreateTexture(deskTexFilename, gDeskTextureId))
+    {
+        cout << "Failed to load texture " << texFilename << endl;
+        return EXIT_FAILURE;
+    }
 
     // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
     glUseProgram(gPyramidProgramId);
     // We set the texture as texture unit 0
     glUniform1i(glGetUniformLocation(gPyramidProgramId, "uTexture"), 0);
+
+    // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
+    glUseProgram(gDeskProgramId);
+    // We set the texture as texture unit 0
+    glUniform1i(glGetUniformLocation(gDeskProgramId, "uDeskTexture"), 0);
 
     // Sets the background color of the window to black (it will be implicitely used by glClear)
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -308,13 +371,16 @@ int main(int argc, char* argv[])
     UDestroyMesh(gPyramidMesh);
     UDestroyMesh(gKeyLightMesh);
     UDestroyMesh(gFillLightMesh);
+    UDestroyMesh(gDeskMesh);
 
     // Release texture
     UDestroyTexture(gTextureId);
+    UDestroyTexture(gDeskTextureId);
 
     // Release shader programs
     UDestroyShaderProgram(gPyramidProgramId);
     UDestroyShaderProgram(gLampProgramId);
+    UDestroyShaderProgram(gDeskProgramId);
 
     exit(EXIT_SUCCESS); // Terminates the program successfully
 }
@@ -585,6 +651,26 @@ void URender()
 
     glDrawArrays(GL_TRIANGLES, 0, gFillLightMesh.nVertices);
 
+    // DESK: draw desk mesh
+   //----------------
+    glUseProgram(gDeskProgramId);
+    glBindVertexArray(gDeskMesh.vao);
+
+    //Transform the smaller cube used as a visual que for the light source
+    model = glm::translate(gDeskPosition) * glm::scale(gDeskScale);
+
+    // Reference matrix uniforms from the Lamp Shader program
+    modelLoc = glGetUniformLocation(gDeskProgramId, "model");
+    viewLoc = glGetUniformLocation(gDeskProgramId, "view");
+    projLoc = glGetUniformLocation(gDeskProgramId, "projection");
+
+    // Pass matrix data to the Lamp Shader program's matrix uniforms
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+    glDrawArrays(GL_TRIANGLES, 0, gDeskMesh.nVertices);
+
     // Deactivate the Vertex Array Object and shader program
     glBindVertexArray(0);
     glUseProgram(0);
@@ -750,12 +836,96 @@ void UCreateLightMesh(GLMesh& mesh)
     glEnableVertexAttribArray(2);
 }
 
+// Implements the UCreateLightMesh function
+void UCreateDeskMesh(GLMesh& mesh)
+{
+    // Position and Color data
+    GLfloat verts[] = {
 
+        //Positions          //Normals
+            // ------------------------------------------------------
+            //Back Face          //Negative Z Normal  Texture Coords.
+           -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
+            0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 0.0f,
+            0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
+            0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  1.0f, 1.0f,
+           -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 1.0f,
+           -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,  0.0f, 0.0f,
+
+           //Front Face         //Positive Z Normal
+          -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
+           0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 0.0f,
+           0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
+           0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  1.0f, 1.0f,
+          -0.5f,  0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 1.0f,
+          -0.5f, -0.5f,  0.5f,  0.0f,  0.0f,  1.0f,  0.0f, 0.0f,
+
+          //Left Face          //Negative X Normal
+         -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+         -0.5f,  0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
+         -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+         -0.5f, -0.5f, -0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+         -0.5f, -0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
+         -0.5f,  0.5f,  0.5f, -1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+
+         //Right Face         //Positive X Normal
+         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  0.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f,
+
+         //Bottom Face        //Negative Y Normal
+        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f,  0.0f,  0.0f, 1.0f,
+
+        //Top Face           //Positive Y Normal
+       -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f,
+        0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 1.0f,
+        0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
+        0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  1.0f, 0.0f,
+       -0.5f,  0.5f,  0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 0.0f,
+       -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f, 1.0f
+    };
+
+    const GLuint floatsPerVertex = 3;
+    const GLuint floatsPerNormal = 3;
+    const GLuint floatsPerUV = 2;
+
+    mesh.nVertices = sizeof(verts) / (sizeof(verts[0]) * (floatsPerVertex + floatsPerNormal + floatsPerUV));
+
+    glGenVertexArrays(1, &mesh.vao); // we can also generate multiple VAOs or buffers at the same time
+    glBindVertexArray(mesh.vao);
+
+    // Create 2 buffers: first one for the vertex data; second one for the indices
+    glGenBuffers(1, &mesh.vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo); // Activates the buffer
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW); // Sends vertex or coordinate data to the GPU
+
+    // Strides between vertex coordinates is 6 (x, y, z, r, g, b, a). A tightly packed stride is 0.
+    GLint stride = sizeof(float) * (floatsPerVertex + floatsPerNormal + floatsPerUV);// The number of floats before each
+
+    // Create Vertex Attribute Pointers
+    glVertexAttribPointer(0, floatsPerVertex, GL_FLOAT, GL_FALSE, stride, 0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, floatsPerNormal, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * floatsPerVertex));
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(2, floatsPerUV, GL_FLOAT, GL_FALSE, stride, (void*)(sizeof(float) * (floatsPerVertex + floatsPerNormal)));
+    glEnableVertexAttribArray(2);
+}
 void UDestroyMesh(GLMesh& mesh)
 {
     glDeleteVertexArrays(1, &mesh.vao);
     glDeleteBuffers(1, &mesh.vbo);
 }
+
 
 
 /*Generate and load the texture*/
